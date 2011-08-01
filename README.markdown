@@ -1,5 +1,7 @@
 `gitit-tasks` is a plugin for [gitit](http://gitit.net/) which allows for convenient task list management.
 
+# Task Lists #
+
 Syntax:
 
     - [ ] Buy some milk and water the plants (better complete this today than tomorrow).
@@ -13,3 +15,15 @@ Syntax:
 
     - [/] This task has been canceled. Nay :(
     - [/](done:2010-12-31) And we even know when this task has been canceled.
+
+By default, only tasks which are still *open* are displayed (i.e., tasks of the `[ ]` family).
+
+# Aggregating Task Lists #
+
+It is often useful to aggregate tasks from multiple wiki pages into a single page. To this end, `gitit-tasks` dynamically replaces every link of the form
+
+    [!tasks](Shopping List)
+
+by the list of all (top-level) tasks on the respective wiki page (here, `Shopping List`).
+
+By default, only tasks which are *open* and *not marked up as "next"* are displayed.

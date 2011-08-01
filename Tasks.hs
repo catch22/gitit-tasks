@@ -1,11 +1,17 @@
 module Tasks (plugin) where
 
+import Control.Monad.CatchIO (try)
+import Data.FileStore (FileStoreError, retrieve)
 import Data.List.Split
 import Data.Maybe
 import Data.Time.Calendar
 import Data.Time.Format
 import Network.Gitit.Interface
+import Network.Gitit.Framework (filestoreFromConfig)
+import Network.Gitit.ContentTransformer (inlinesToString)
+import Network.URL (decString)
 import System.Locale
+import Text.Pandoc (defaultParserState, readMarkdown)
 
 
 data Focus = Today | Next deriving Eq
@@ -14,6 +20,7 @@ data Status = Open { focus :: Focus, due :: Maybe Day }
   | Canceled { on :: Maybe Day }
 data Task = Task { status :: Status, title :: Block, content :: [Block] }
 
+--- try to parse list of blocks (e.g., the children blocks of a bullet list) as a task
 parseTask :: [Block] -> Maybe Task
 parseTask (Plain is':bs) = parsePara is' Plain bs
 parseTask (Para is':bs) = parsePara is' Para bs
@@ -45,6 +52,14 @@ parseInfo str = foldr (.) id (map apply $ splitOn "," str)
     parseDate :: String -> Day
     parseDate = readTime defaultTimeLocale "%Y-%m-%d"
 
+-- find all top-level tasks in the given blocks
+findToplevelTasks :: [Block] -> [Task]
+findToplevelTasks = catMaybes . concat . map go
+  where
+    go (BulletList items) = map parseTask items
+    go _ = []
+
+-- format task back into a list of blocks
 formatTask :: Task -> [Block]
 formatTask (Task (Open Today due) title content) = formatTitle id id due title : content
 formatTask (Task (Open Next due) title content) = formatTitle emph id due title : content where emph is = [Emph is]
@@ -65,11 +80,16 @@ formatDay (Just day) = [Str (formatTime defaultTimeLocale "%b %e, %Y" day), Str 
 formatDay Nothing = []
 
 
+-- gitit plugin entry point
 plugin :: Plugin
 plugin = mkPageTransformM transformTasks
 
+-- transform page block by block...
 transformTasks :: Block -> PluginM Block
-transformTasks (BulletList items) = return $ BulletList (catMaybes (map transformItem items))
+
+-- ...formatting tasks in bullet lists
+transformTasks (BulletList items) =
+    return $ BulletList (catMaybes (map transformItem items))
   where
     transformItem :: [Block] -> Maybe [Block]
     transformItem bs = case parseTask bs of
@@ -80,4 +100,31 @@ transformTasks (BulletList items) = return $ BulletList (catMaybes (map transfor
     --showTask _ = True
     showTask (Task (Open _ _) _ _) = True
     showTask _ = False
+
+-- ...aggregating tasks from other wiki pages
+transformTasks (Para [Link [Str "!", Str "tasks"] (url, _)]) = do
+  -- do not cache (dynamic aggregation)
+  doNotCache
+
+  -- load page from filestore
+  cfg <- askConfig
+  let filestore = filestoreFromConfig cfg
+  let Just pageName = decString True url
+  page <- try $ liftIO (retrieve filestore (pageName ++ ".page") Nothing)
+  case page :: Either FileStoreError String of
+    Left e ->
+      -- does not exist? output ordinary wiki link
+      let
+        label = Str ("[!tasks](" ++ pageName ++ ")")
+        alt = "'" ++ pageName ++ "' doesn't exist. Click here to create it."
+      in
+        return $ Para [Link [label] (pageName, alt)]
+    Right markdown ->
+      -- markdown found? collect all tasks into a single bullet list
+      let
+        Pandoc _ content = readMarkdown defaultParserState markdown
+        tasks = [task | task@(Task (Open Today _) _ _) <- findToplevelTasks content]
+      in
+        return $ BulletList (map formatTask tasks)
+
 transformTasks other = return other
