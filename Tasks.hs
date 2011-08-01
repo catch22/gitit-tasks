@@ -5,6 +5,7 @@ import Data.FileStore (FileStoreError, retrieve)
 import Data.List.Split
 import Data.Maybe
 import Data.Time.Calendar
+import Data.Time.Clock
 import Data.Time.Format
 import Network.Gitit.Interface
 import Network.Gitit.Framework (filestoreFromConfig)
@@ -60,24 +61,27 @@ findToplevelTasks = catMaybes . concat . map go
     go _ = []
 
 -- format task back into a list of blocks
-formatTask :: Task -> [Block]
-formatTask (Task (Open Today due) title content) = formatTitle id id due title : content
-formatTask (Task (Open Next due) title content) = formatTitle emph id due title : content where emph is = [Emph is]
-formatTask (Task (Completed on) title content) = formatTitle prefix id on title : content
+formatTask :: Day -> Task -> [Block]
+formatTask today (Task (Open Today due) title content) = formatTitle (Just today) id id due title : content
+formatTask today (Task (Open Next due) title content) = formatTitle (Just today) emph id due title : content where emph is = [Emph is]
+formatTask _ (Task (Completed on) title content) = formatTitle Nothing prefix id on title : content
   where
     prefix is = Emph [Str "☒ Completed:"] : Space : is
-formatTask (Task (Canceled on) title content) = formatTitle prefix strikeout on title : content
+formatTask _ (Task (Canceled on) title content) = formatTitle Nothing prefix strikeout on title : content
   where
     prefix is = Emph [Str "☒ Canceled:"] : Space : is
     strikeout is = [Strikeout is]   --- does not do anything due to Pandoc bug
 
-formatTitle :: ([Inline] -> [Inline]) -> ([Inline] -> [Inline]) -> Maybe Day -> Block -> Block
-formatTitle prefix wrap day (Plain is) = Plain $ prefix $ formatDay day ++ wrap is
-formatTitle prefix wrap day (Para is) = Para $ prefix $ formatDay day ++ wrap is
+formatTitle :: Maybe Day -> ([Inline] -> [Inline]) -> ([Inline] -> [Inline]) -> Maybe Day -> Block -> Block
+formatTitle compareToday prefix wrap day (Plain is) = Plain $ prefix $ formatDay compareToday day ++ wrap is
+formatTitle compareToday prefix wrap day (Para is) = Para $ prefix $ formatDay compareToday day ++ wrap is
 
-formatDay :: Maybe Day -> [Inline]
-formatDay (Just day) = [Str (formatTime defaultTimeLocale "%b %e, %Y" day), Str ":", Space]
-formatDay Nothing = []
+formatDay :: Maybe Day -> Maybe Day -> [Inline]
+formatDay compareToday (Just day) = (decorate compareToday) [Str (formatTime defaultTimeLocale "%b %e, %Y" day), Str ":", Space]
+  where
+    decorate (Just today) is | not (today < day) = [Strong is]
+    decorate _ is = is
+formatDay _ Nothing = []
 
 
 -- gitit plugin entry point
@@ -88,12 +92,19 @@ plugin = mkPageTransformM transformTasks
 transformTasks :: Block -> PluginM Block
 
 -- ..formatting tasks in bullet lists
-transformTasks (BulletList items) =
-    return $ BulletList (catMaybes (map transformItem items))
+transformTasks (BulletList items) = do
+    -- do not cache (time-dependent)
+    doNotCache
+
+    -- determine current day
+    currentTime <- liftIO getCurrentTime
+    let today = utctDay currentTime
+
+    return $ BulletList (catMaybes (map (transformItem today) items))
   where
-    transformItem :: [Block] -> Maybe [Block]
-    transformItem bs = case parseTask bs of
-      Just task -> if showTask task then Just (formatTask task) else Nothing
+    transformItem :: Day -> [Block] -> Maybe [Block]
+    transformItem today bs = case parseTask bs of
+      Just task -> if showTask task then Just (formatTask today task) else Nothing
       Nothing -> Just bs
 
     showTask :: Task -> Bool
@@ -103,8 +114,12 @@ transformTasks (BulletList items) =
 
 -- ..aggregating tasks from other wiki pages
 transformTasks (Para [Link [Str "!", Str "tasks"] (url, _)]) = do
-  -- do not cache (dynamic aggregation)
+  -- do not cache (time-dependent highlighting, dynamic aggregation)
   doNotCache
+
+  -- get current day
+  currentTime <- liftIO getCurrentTime
+  let today = utctDay currentTime
 
   -- load page from filestore
   cfg <- askConfig
@@ -125,6 +140,6 @@ transformTasks (Para [Link [Str "!", Str "tasks"] (url, _)]) = do
         Pandoc _ content = readMarkdown defaultParserState markdown
         tasks = [task | task@(Task (Open Today _) _ _) <- findToplevelTasks content]
       in
-        return $ BulletList (map formatTask tasks)
+        return $ BulletList (map (formatTask today) tasks)
 
 transformTasks other = return other
