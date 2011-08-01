@@ -50,7 +50,7 @@ parseInfo str = foldr (.) id (map apply $ splitOn "," str)
 formatTask :: Task -> [Block]
 formatTask (Task (Open Urgent due) title content) = formatTitle id strong due title : content where strong is = [Strong is]
 formatTask (Task (Open Today due) title content) = formatTitle id id due title : content
-formatTask (Task (Open Next due) title content) = formatTitle id emph due title : content where emph is = [Emph is]
+formatTask (Task (Open Next due) title content) = formatTitle emph id due title : content where emph is = [Emph is]
 formatTask (Task (Completed on) title content) = formatTitle prefix id on title : content
   where
     prefix is = Emph [Str "☒ Completed:"] : Space : is
