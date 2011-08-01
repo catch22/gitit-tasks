@@ -8,7 +8,7 @@ import Network.Gitit.Interface
 import System.Locale
 
 
-data Focus = Urgent | Today | Next deriving Eq
+data Focus = Today | Next deriving Eq
 data Status = Open { focus :: Focus, due :: Maybe Day }
   | Completed { on :: Maybe Day }
   | Canceled { on :: Maybe Day }
@@ -21,11 +21,9 @@ parseTask _ = Nothing
 
 parsePara :: [Inline] -> ([Inline] -> Block) -> [Block] -> Maybe Task
 parsePara (Str "[":Space:Str "]":Space:rest) block = Just . Task (Open Today Nothing) (block rest)
-parsePara (Str "[":Str "!":Str "]":Space:rest) block = Just . Task (Open Urgent Nothing) (block rest)
 parsePara (Str "[":Str "x":Str "]":Space:rest) block = Just . Task (Completed Nothing) (block rest)
 parsePara (Str "[":Str "/":Str "]":Space:rest) block = Just . Task (Canceled Nothing) (block rest)
 parsePara (Link [] (info, _):Space:rest) block = Just . parseInfo info . Task (Open Today Nothing) (block rest)
-parsePara (Link [Str "!"] (info, _):Space:rest) block = Just . parseInfo info . Task (Open Urgent Nothing) (block rest)
 parsePara (Link [Str "x"] (info, _):Space:rest) block = Just . parseInfo info . Task (Completed Nothing) (block rest)
 parsePara (Link [Str "/"] (info, _):Space:rest) block = Just . parseInfo info . Task (Canceled Nothing) (block rest)
 parsePara _ _ = \_ -> Nothing
@@ -48,7 +46,6 @@ parseInfo str = foldr (.) id (map apply $ splitOn "," str)
     parseDate = readTime defaultTimeLocale "%Y-%m-%d"
 
 formatTask :: Task -> [Block]
-formatTask (Task (Open Urgent due) title content) = formatTitle id strong due title : content where strong is = [Strong is]
 formatTask (Task (Open Today due) title content) = formatTitle id id due title : content
 formatTask (Task (Open Next due) title content) = formatTitle emph id due title : content where emph is = [Emph is]
 formatTask (Task (Completed on) title content) = formatTitle prefix id on title : content
