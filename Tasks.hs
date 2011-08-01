@@ -84,10 +84,10 @@ formatDay Nothing = []
 plugin :: Plugin
 plugin = mkPageTransformM transformTasks
 
--- transform page block by block...
+-- transform page block by block..
 transformTasks :: Block -> PluginM Block
 
--- ...formatting tasks in bullet lists
+-- ..formatting tasks in bullet lists
 transformTasks (BulletList items) =
     return $ BulletList (catMaybes (map transformItem items))
   where
@@ -101,7 +101,7 @@ transformTasks (BulletList items) =
     showTask (Task (Open _ _) _ _) = True
     showTask _ = False
 
--- ...aggregating tasks from other wiki pages
+-- ..aggregating tasks from other wiki pages
 transformTasks (Para [Link [Str "!", Str "tasks"] (url, _)]) = do
   -- do not cache (dynamic aggregation)
   doNotCache
