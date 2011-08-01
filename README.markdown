@@ -16,7 +16,7 @@ Syntax:
     - [/] This task has been canceled. Nay :(
     - [/](done:2010-12-31) And we even know when this task has been canceled.
 
-By default, only tasks which are still *open* are displayed (i.e., tasks of the `[ ]` family).
+By default, only tasks which are *open* are displayed (i.e., tasks of the `[ ]` family).
 
 # Aggregating Task Lists #
 
@@ -26,4 +26,4 @@ It is often useful to aggregate tasks from multiple wiki pages into a single pag
 
 by the list of all (top-level) tasks on the respective wiki page (here, `Shopping List`).
 
-By default, only tasks which are *open* and *not marked up as "next"* are displayed.
+By default, only tasks which are *open* and *either not marked up as "next" or due* are displayed.

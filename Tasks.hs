@@ -138,7 +138,10 @@ transformTasks (Para [Link [Str "!", Str "tasks"] (url, _)]) = do
       -- markdown found? collect all tasks into a single bullet list
       let
         Pandoc _ content = readMarkdown defaultParserState markdown
-        tasks = [task | task@(Task (Open Today _) _ _) <- findToplevelTasks content]
+        tasks = filter showTask (findToplevelTasks content)
+        showTask (Task (Open Today _) _ _) = True
+        showTask (Task (Open Next (Just due)) _ _) | not (today < due) = True
+        showTask _ = False
       in
         return $ BulletList (map (formatTask today) tasks)
 
