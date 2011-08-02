@@ -20,7 +20,7 @@ Example:
 
 Screenshot:
 
-![Screenshot](Screenshot.png)
+![Screenshot](https://github.com/downloads/catch22/gitit-tasks/Screenshot.png)
 
 Observe that, by default, only tasks which are *open* are displayed (i.e., tasks of the `[ ]` family).
 Moreover, the last task's due date is highlighted, as it has already passed.
