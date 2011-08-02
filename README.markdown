@@ -1,8 +1,10 @@
 `gitit-tasks` is a plugin for [gitit](http://gitit.net/) which allows for convenient task list management.
 
-# Task Lists #
+# Task Lists
 
-Syntax:
+Example:
+
+    # Sample Tasks
 
     - [ ] Buy some milk and water the plants (better complete this today than tomorrow).
     - [ ](due:2011-12-24) Buy christmas presents (but already think about it today).
@@ -16,9 +18,14 @@ Syntax:
     - [/] This task has been canceled. Nay :(
     - [/](done:2010-12-31) And we even know when this task has been canceled.
 
-By default, only tasks which are *open* are displayed (i.e., tasks of the `[ ]` family).
+Screenshot:
 
-# Aggregating Task Lists #
+![Screenshot](Screenshot1.png)
+
+Observe that, by default, only tasks which are *open* are displayed (i.e., tasks of the `[ ]` family).
+Moreover, the last task's due date is highlighted, as it has already passed.
+
+# Aggregating Tasks
 
 It is often useful to aggregate tasks from multiple wiki pages into a single page. To this end, `gitit-tasks` dynamically replaces every link of the form
 
