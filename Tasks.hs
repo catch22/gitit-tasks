@@ -7,6 +7,7 @@ import Data.Maybe
 import Data.Time.Calendar
 import Data.Time.Clock
 import Data.Time.Format
+import Data.Time.LocalTime
 import Network.Gitit.Interface
 import Network.Gitit.Framework (filestoreFromConfig)
 import Network.Gitit.ContentTransformer (inlinesToString)
@@ -84,6 +85,14 @@ formatDay compareToday (Just day) = (decorate compareToday) [Str (formatTime def
 formatDay _ Nothing = []
 
 
+-- current day in current timezone
+getCurrentLocalDay :: IO Day
+getCurrentLocalDay = do
+  timezone <- getCurrentTimeZone
+  time <- getCurrentTime
+  return $ localDay $ utcToLocalTime timezone time
+
+
 -- gitit plugin entry point
 plugin :: Plugin
 plugin = mkPageTransformM transformTasks
@@ -97,9 +106,9 @@ transformTasks (BulletList items) = do
     doNotCache
 
     -- determine current day
-    currentTime <- liftIO getCurrentTime
-    let today = utctDay currentTime
+    today <- liftIO getCurrentLocalDay
 
+    -- list all open tasks
     return $ BulletList (catMaybes (map (transformItem today) items))
   where
     transformItem :: Day -> [Block] -> Maybe [Block]
@@ -118,8 +127,7 @@ transformTasks (Para [Link [Str "!", Str "tasks"] (url, _)]) = do
   doNotCache
 
   -- get current day
-  currentTime <- liftIO getCurrentTime
-  let today = utctDay currentTime
+  today <- liftIO getCurrentLocalDay
 
   -- load page from filestore
   cfg <- askConfig
