@@ -16,50 +16,72 @@ import System.Locale
 import Text.Pandoc (defaultParserState, readMarkdown)
 
 
-data Focus = Today | Next deriving Eq
+data Focus = Today | Next deriving (Eq, Show)
 data Status = Open { focus :: Focus, due :: Maybe Day }
   | Completed { on :: Maybe Day }
   | Canceled { on :: Maybe Day }
+  deriving Show
 data Task = Task { status :: Status, title :: Block, content :: [Block] }
 
+
+-- parse monad
+data Parser a = Result a | ParseError String | NotATask
+
+instance Monad Parser where
+  -- composition
+  Result x >>= f = f x
+  ParseError str >>= _ = ParseError str
+  NotATask >>= _ = NotATask
+
+  -- lifts
+  return = Result
+  fail = ParseError
+
+getResult :: Parser a -> Maybe a
+getResult (Result x) = Just x
+getResult _ = Nothing
+
 --- try to parse list of blocks (e.g., the children blocks of a bullet list) as a task
-parseTask :: [Block] -> Maybe Task
+parseTask :: [Block] -> Parser Task
 parseTask (Plain is':bs) = parsePara is' Plain bs
 parseTask (Para is':bs) = parsePara is' Para bs
-parseTask _ = Nothing
+parseTask _ = NotATask
 
-parsePara :: [Inline] -> ([Inline] -> Block) -> [Block] -> Maybe Task
-parsePara (Str "[":Space:Str "]":Space:rest) block = Just . Task (Open Today Nothing) (block rest)
-parsePara (Str "[":Str "x":Str "]":Space:rest) block = Just . Task (Completed Nothing) (block rest)
-parsePara (Str "[":Str "/":Str "]":Space:rest) block = Just . Task (Canceled Nothing) (block rest)
-parsePara (Link [] (info, _):Space:rest) block = Just . parseInfo info . Task (Open Today Nothing) (block rest)
-parsePara (Link [Str "x"] (info, _):Space:rest) block = Just . parseInfo info . Task (Completed Nothing) (block rest)
-parsePara (Link [Str "/"] (info, _):Space:rest) block = Just . parseInfo info . Task (Canceled Nothing) (block rest)
-parsePara _ _ = \_ -> Nothing
+parsePara :: [Inline] -> ([Inline] -> Block) -> [Block] -> Parser Task
+parsePara (Str "[":Space:Str "]":Space:rest) block = return . Task (Open Today Nothing) (block rest)
+parsePara (Str "[":Str "x":Str "]":Space:rest) block = return . Task (Completed Nothing) (block rest)
+parsePara (Str "[":Str "/":Str "]":Space:rest) block = return . Task (Canceled Nothing) (block rest)
+parsePara (Link [] (info, _):Space:rest) block = parseInfo info . Task (Open Today Nothing) (block rest)
+parsePara (Link [Str "x"] (info, _):Space:rest) block = parseInfo info . Task (Completed Nothing) (block rest)
+parsePara (Link [Str "/"] (info, _):Space:rest) block = parseInfo info . Task (Canceled Nothing) (block rest)
+parsePara _ _ = const NotATask
 
-parseInfo :: String -> Task -> Task
-parseInfo str = foldr (.) id (map apply $ splitOn "," str)
+parseInfo :: String -> Task -> Parser Task
+parseInfo str task = foldr (=<<) (return task) (map apply $ splitOn "," str)
   where
-    apply :: String -> (Task -> Task)
-    apply str task = task { status = apply' str (status task) }
+    apply :: String -> Task -> Parser Task
+    apply str task = do
+      status' <- apply' str (status task)
+      return $ task { status = status' }
 
-    apply' :: String -> (Status -> Status)
-    apply' "" x = x
-    apply' "next" (Open _ due) = Open Next due
-    apply' ('d':'u':'e':':':str) (Open focus _) = Open focus (Just $ parseDate str)
-    apply' ('d':'o':'n':'e':':':str) (Completed _) = Completed (Just $ parseDate str)
-    apply' ('d':'o':'n':'e':':':str) (Canceled _) = Canceled (Just $ parseDate str)
-    apply' str _ = error $ "Unknown task modifier '" ++ str ++ "'"
+    apply' :: String -> Status -> Parser Status
+    apply' "" x = return x
+    apply' "next" (Open _ due) = return $ Open Next due
+    apply' ('d':'u':'e':':':str) (Open focus _) = return $ Open focus (Just $ parseDate str)
+    apply' ('d':'o':'n':'e':':':str) (Completed _) = return $ Completed (Just $ parseDate str)
+    apply' ('d':'o':'n':'e':':':str) (Canceled _) = return $ Canceled (Just $ parseDate str)
+    apply' str task = fail $ "Task modifier '" ++ str ++ "'" ++ " unknown or not applicable to status '" ++ show task ++ "'"
 
     parseDate :: String -> Day
     parseDate = readTime defaultTimeLocale "%Y-%m-%d"
 
 -- find all top-level tasks in the given blocks
 findToplevelTasks :: [Block] -> [Task]
-findToplevelTasks = catMaybes . concat . map go
+findToplevelTasks = catMaybes . map getResult . concat . map go
   where
     go (BulletList items) = map parseTask items
     go _ = []
+
 
 -- format task back into a list of blocks
 formatTask :: Day -> Task -> [Block]
@@ -113,8 +135,9 @@ transformTasks (BulletList items) = do
   where
     transformItem :: Day -> [Block] -> Maybe [Block]
     transformItem today bs = case parseTask bs of
-      Just task -> if showTask task then Just (formatTask today task) else Nothing
-      Nothing -> Just bs
+      Result task -> if showTask task then Just (formatTask today task) else Nothing
+      ParseError str -> Just [Plain [RawInline "html" "<font color='red'>", Str str, RawInline "html" "</font>"]]
+      NotATask -> Just bs
 
     showTask :: Task -> Bool
     --showTask _ = True
