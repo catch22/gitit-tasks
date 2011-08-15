@@ -21,7 +21,7 @@ data Status = Open { focus :: Focus, due :: Maybe Day }
   | Completed { on :: Maybe Day }
   | Canceled { on :: Maybe Day }
   deriving Show
-data Task = Task { status :: Status, title :: Block, content :: [Block] }
+data Task = Task { status :: Status, delegate :: Maybe String, title :: Block, content :: [Block] }
 
 
 -- parse monad
@@ -59,6 +59,9 @@ parsePara (Str "[":statusInline:Str "]":Space:rest) makeBlock content = do
         parseMeta task' rest
       where
         date = readTime defaultTimeLocale "%Y-%m-%d" (year ++ "-" ++ month ++ "-" ++ day)
+    parseMeta task (Str ('@':name):Space:rest) = do
+      let task' = task { delegate = Just name }
+      parseMeta task' rest
     parseMeta task rest = return $ task { title = makeBlock rest }
 
     updateStatusWithDate :: Day -> Status -> Parser Status
@@ -67,10 +70,10 @@ parsePara (Str "[":statusInline:Str "]":Space:rest) makeBlock content = do
     updateStatusWithDate done (Canceled _) = return $ Canceled (Just done)
 
     taskForStatus :: Inline -> Block -> [Block] -> Parser Task
-    taskForStatus Space title = return . Task (Open Today Nothing) title
-    taskForStatus (Str "?") title = return . Task (Open Someday Nothing) title
-    taskForStatus (Str "x") title = return . Task (Completed Nothing) title
-    taskForStatus (Str "/") title = return . Task (Canceled Nothing) title
+    taskForStatus Space title = return . Task (Open Today Nothing) Nothing title
+    taskForStatus (Str "?") title = return . Task (Open Someday Nothing) Nothing title
+    taskForStatus (Str "x") title = return . Task (Completed Nothing) Nothing title
+    taskForStatus (Str "/") title = return . Task (Canceled Nothing) Nothing title
     taskForStatus _ _ = const NotATask
 parsePara _ _ _ = NotATask
 
@@ -84,15 +87,19 @@ findToplevelTasks = catMaybes . map getResult . concat . map go
 
 -- format task back into a list of blocks
 formatTask :: Day -> Task -> [Block]
-formatTask today (Task (Open Today due) title content) = formatTitle (Just today) id id due title : content
-formatTask today (Task (Open Someday due) title content) = formatTitle (Just today) emph id due title : content where emph is = [Emph is]
-formatTask _ (Task (Completed on) title content) = formatTitle Nothing prefix id on title : content
-  where
-    prefix is = Emph [Str "☒ Completed:"] : Space : is
-formatTask _ (Task (Canceled on) title content) = formatTitle Nothing prefix strikeout on title : content
-  where
-    prefix is = Emph [Str "☒ Canceled:"] : Space : is
-    strikeout is = [Strikeout is]   --- does not do anything due to Pandoc bug
+formatTask today (Task (Open Today due) delegate title content) = formatTitle (Just today) (prefixDelegate delegate) id due title : content
+formatTask today (Task (Open Someday due) delegate title content) = formatTitle (Just today) (prefixDelegate delegate . emph) id due title : content
+  where emph is = [Emph is]
+formatTask _ (Task (Completed done) delegate title content) = formatTitle Nothing (prefixDone "☒ Completed:" . prefixDelegate delegate) id done title : content
+formatTask _ (Task (Canceled done) delegate title content) = formatTitle Nothing (prefixDone "☒ Canceled:" . prefixDelegate delegate) strikeout done title : content
+  where strikeout is = [Strikeout is]   --- does not do anything due to Pandoc bug
+
+prefixDelegate :: Maybe String -> [Inline] -> [Inline]
+prefixDelegate (Just name) is = Link [Str ('@':name)] ('@':name,"") : Space : is
+prefixDelegate Nothing is = is
+
+prefixDone :: String -> [Inline] -> [Inline]
+prefixDone str is = Emph [Str str] : Space : is
 
 formatTitle :: Maybe Day -> ([Inline] -> [Inline]) -> ([Inline] -> [Inline]) -> Maybe Day -> Block -> Block
 formatTitle maybeToday prefix wrap day (Plain is) = Plain $ prefix $ formatDay maybeToday day ++ wrap is
@@ -137,13 +144,13 @@ transformTasks (BulletList items) = do
   where
     transformItem :: Day -> [Block] -> Maybe [Block]
     transformItem today bs = case parseTask bs of
-      Result task -> if showTask task then Just (formatTask today task) else Nothing
+      Result task -> if showTask (status task) then Just (formatTask today task) else Nothing
       ParseError str -> Just [Plain [RawInline "html" "<font color='red'>", Str str, RawInline "html" "</font>"]]
       NotATask -> Just bs
 
-    showTask :: Task -> Bool
+    showTask :: Status -> Bool
     --showTask _ = True
-    showTask (Task (Open _ _) _ _) = True
+    showTask (Open _ _) = True
     showTask _ = False
 
 -- ..aggregating tasks from other wiki pages
@@ -171,9 +178,10 @@ transformTasks (Para [Link [Str "!", Str "tasks"] (url, _)]) = do
       -- markdown found? collect all tasks into a single bullet list
       let
         Pandoc _ content = readMarkdown (defaultParserState { stateSmart = True }) markdown
-        tasks = filter showTask (findToplevelTasks content)
-        showTask (Task (Open Today _) _ _) = True
-        showTask (Task (Open Someday (Just due)) _ _) | not (today < due) = True
+        tasks = filter (showTask . status) (findToplevelTasks content)
+
+        showTask (Open Today _) = True   -- undelegated and today
+        showTask (Open _ (Just due)) | not (today < due) = True   -- due
         showTask _ = False
       in
         return $ BulletList (map (formatTask today) tasks)

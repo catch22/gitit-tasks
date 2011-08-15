@@ -9,7 +9,7 @@ Example:
     - [ ] Buy some milk and water the plants (better complete this today than tomorrow).
     - [ ] 2011-12-24 Buy Christmas presents (and have this task already on the radar today).
     - [?] This task will have to be completed some time in the future (but does not bother us too much today).
-    - [?] 2010-12-24 This we should also do someday (oops, in fact we should have done this last Christmas).
+    - [?] 2010-12-24 @John This should be done someday (oops, in fact John should have done this last Christmas).
     - [x] This task has been completed. Yay!
     - [x] 2011-01-01 This one was ready by the new year!
     - [/] This task has been canceled. Nay :(
@@ -30,4 +30,4 @@ It is often useful to aggregate tasks from multiple wiki pages into a single pag
 
 by the list of all (top-level) tasks on the respective wiki page (here, `Shopping List`).
 
-By default, only tasks of the `[ ]` family *as well as due tasks* are displayed.
+By default, tasks are only displated if they are either undelegated and of the `[ ]` family or if they are due.
