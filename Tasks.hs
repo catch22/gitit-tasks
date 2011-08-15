@@ -97,16 +97,19 @@ formatTask _ (Task (Canceled on) title content) = formatTitle Nothing prefix str
     strikeout is = [Strikeout is]   --- does not do anything due to Pandoc bug
 
 formatTitle :: Maybe Day -> ([Inline] -> [Inline]) -> ([Inline] -> [Inline]) -> Maybe Day -> Block -> Block
-formatTitle compareToday prefix wrap day (Plain is) = Plain $ prefix $ formatDay compareToday day ++ wrap is
-formatTitle compareToday prefix wrap day (Para is) = Para $ prefix $ formatDay compareToday day ++ wrap is
+formatTitle maybeToday prefix wrap day (Plain is) = Plain $ prefix $ formatDay maybeToday day ++ wrap is
+formatTitle maybeToday prefix wrap day (Para is) = Para $ prefix $ formatDay maybeToday day ++ wrap is
 
 formatDay :: Maybe Day -> Maybe Day -> [Inline]
-formatDay compareToday (Just day) = (decorate compareToday) [Str (formatTime defaultTimeLocale "%b %e, %Y" day), Str ":", Space]
+formatDay maybeToday (Just day) = (decorate maybeToday) [Str (formatTime defaultTimeLocale "%b %e, %Y" day), Str ":", Space]
   where
-    decorate (Just today) is | not (today < day) = [Strong is]
+    decorate (Just today) is | not (today < day) = [RawInline "html" "<font color='red'>", Strong is, RawInline "html" "</font>"]
+    decorate (Just today) is | not (today < warnDay day) = [Strong is]
     decorate _ is = is
 formatDay _ Nothing = []
 
+warnDay :: Day ->Day
+warnDay = addDays (-3)
 
 -- current day in current timezone
 getCurrentLocalDay :: IO Day
