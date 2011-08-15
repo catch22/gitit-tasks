@@ -8,8 +8,8 @@ Example:
 
     - [ ] Buy some milk and water the plants (better complete this today than tomorrow).
     - [ ](due:2011-12-24) Buy Christmas presents (but already have it on the radar today).
-    - [.] This task will have to be completed some time in the future (but does not bother us too much today).
-    - [.](due:2010-12-24) This we should also do someday (oops, in fact we should have done this last Christmas).
+    - [?] This task will have to be completed some time in the future (but does not bother us too much today).
+    - [?](due:2010-12-24) This we should also do someday (oops, in fact we should have done this last Christmas).
     - [x] This task has been completed. Yay!
     - [x](done:2011-01-01) This one was ready by the new year!
     - [/] This task has been canceled. Nay :(

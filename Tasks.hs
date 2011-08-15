@@ -49,11 +49,11 @@ parseTask _ = NotATask
 
 parsePara :: [Inline] -> ([Inline] -> Block) -> [Block] -> Parser Task
 parsePara (Str "[":Space:Str "]":Space:rest) block = return . Task (Open Today Nothing) (block rest)
-parsePara (Str "[":Str ".":Str "]":Space:rest) block = return . Task (Open Next Nothing) (block rest)
+parsePara (Str "[":Str "?":Str "]":Space:rest) block = return . Task (Open Next Nothing) (block rest)
 parsePara (Str "[":Str "x":Str "]":Space:rest) block = return . Task (Completed Nothing) (block rest)
 parsePara (Str "[":Str "/":Str "]":Space:rest) block = return . Task (Canceled Nothing) (block rest)
 parsePara (Link [] (info, _):Space:rest) block = parseInfo info . Task (Open Today Nothing) (block rest)
-parsePara (Link [Str "."] (info, _):Space:rest) block = parseInfo info . Task (Open Next Nothing) (block rest)
+parsePara (Link [Str "?"] (info, _):Space:rest) block = parseInfo info . Task (Open Next Nothing) (block rest)
 parsePara (Link [Str "x"] (info, _):Space:rest) block = parseInfo info . Task (Completed Nothing) (block rest)
 parsePara (Link [Str "/"] (info, _):Space:rest) block = parseInfo info . Task (Canceled Nothing) (block rest)
 parsePara _ _ = const NotATask
