@@ -13,10 +13,10 @@ import Network.Gitit.Framework (filestoreFromConfig)
 import Network.Gitit.ContentTransformer (inlinesToString)
 import Network.URL (decString)
 import System.Locale
-import Text.Pandoc (defaultParserState, readMarkdown)
+import Text.Pandoc (defaultParserState, ParserState(..), readMarkdown)
 
 
-data Focus = Today | Next deriving (Eq, Show)
+data Focus = Today | Someday deriving (Eq, Show)
 data Status = Open { focus :: Focus, due :: Maybe Day }
   | Completed { on :: Maybe Day }
   | Canceled { on :: Maybe Day }
@@ -48,33 +48,31 @@ parseTask (Para is':bs) = parsePara is' Para bs
 parseTask _ = NotATask
 
 parsePara :: [Inline] -> ([Inline] -> Block) -> [Block] -> Parser Task
-parsePara (Str "[":Space:Str "]":Space:rest) block = return . Task (Open Today Nothing) (block rest)
-parsePara (Str "[":Str "?":Str "]":Space:rest) block = return . Task (Open Next Nothing) (block rest)
-parsePara (Str "[":Str "x":Str "]":Space:rest) block = return . Task (Completed Nothing) (block rest)
-parsePara (Str "[":Str "/":Str "]":Space:rest) block = return . Task (Canceled Nothing) (block rest)
-parsePara (Link [] (info, _):Space:rest) block = parseInfo info . Task (Open Today Nothing) (block rest)
-parsePara (Link [Str "?"] (info, _):Space:rest) block = parseInfo info . Task (Open Next Nothing) (block rest)
-parsePara (Link [Str "x"] (info, _):Space:rest) block = parseInfo info . Task (Completed Nothing) (block rest)
-parsePara (Link [Str "/"] (info, _):Space:rest) block = parseInfo info . Task (Canceled Nothing) (block rest)
-parsePara _ _ = const NotATask
-
-parseInfo :: String -> Task -> Parser Task
-parseInfo str task = foldr (=<<) (return task) (map apply $ splitOn "," str)
+parsePara (Str "[":statusInline:Str "]":Space:rest) makeBlock content = do
+    task <- taskForStatus statusInline (Plain [Str "(parse in progress)"]) content
+    parseMeta task rest
   where
-    apply :: String -> Task -> Parser Task
-    apply str task = do
-      status' <- apply' str (status task)
-      return $ task { status = status' }
+    parseMeta :: Task -> [Inline] -> Parser Task
+    parseMeta task (Str year:EnDash:Str month:EnDash:Str day:Space:rest) = do
+        status' <- updateStatusWithDate date (status task)
+        let task' = task { status = status' }
+        parseMeta task' rest
+      where
+        date = readTime defaultTimeLocale "%Y-%m-%d" (year ++ "-" ++ month ++ "-" ++ day)
+    parseMeta task rest = return $ task { title = makeBlock rest }
 
-    apply' :: String -> Status -> Parser Status
-    apply' "" x = return x
-    apply' ('d':'u':'e':':':str) (Open focus _) = return $ Open focus (Just $ parseDate str)
-    apply' ('d':'o':'n':'e':':':str) (Completed _) = return $ Completed (Just $ parseDate str)
-    apply' ('d':'o':'n':'e':':':str) (Canceled _) = return $ Canceled (Just $ parseDate str)
-    apply' str task = fail $ "Task modifier '" ++ str ++ "'" ++ " unknown or not applicable to status '" ++ show task ++ "'"
+    updateStatusWithDate :: Day -> Status -> Parser Status
+    updateStatusWithDate due (Open focus _) = return $ Open focus (Just due)
+    updateStatusWithDate done (Completed _) = return $ Completed (Just done)
+    updateStatusWithDate done (Canceled _) = return $ Canceled (Just done)
 
-    parseDate :: String -> Day
-    parseDate = readTime defaultTimeLocale "%Y-%m-%d"
+    taskForStatus :: Inline -> Block -> [Block] -> Parser Task
+    taskForStatus Space title = return . Task (Open Today Nothing) title
+    taskForStatus (Str "?") title = return . Task (Open Someday Nothing) title
+    taskForStatus (Str "x") title = return . Task (Completed Nothing) title
+    taskForStatus (Str "/") title = return . Task (Canceled Nothing) title
+    taskForStatus _ _ = const NotATask
+parsePara _ _ _ = NotATask
 
 -- find all top-level tasks in the given blocks
 findToplevelTasks :: [Block] -> [Task]
@@ -87,7 +85,7 @@ findToplevelTasks = catMaybes . map getResult . concat . map go
 -- format task back into a list of blocks
 formatTask :: Day -> Task -> [Block]
 formatTask today (Task (Open Today due) title content) = formatTitle (Just today) id id due title : content
-formatTask today (Task (Open Next due) title content) = formatTitle (Just today) emph id due title : content where emph is = [Emph is]
+formatTask today (Task (Open Someday due) title content) = formatTitle (Just today) emph id due title : content where emph is = [Emph is]
 formatTask _ (Task (Completed on) title content) = formatTitle Nothing prefix id on title : content
   where
     prefix is = Emph [Str "☒ Completed:"] : Space : is
@@ -109,7 +107,7 @@ formatDay maybeToday (Just day) = (decorate maybeToday) [Str (formatTime default
 formatDay _ Nothing = []
 
 warnDay :: Day ->Day
-warnDay = addDays (-3)
+warnDay = addDays (-2)
 
 -- current day in current timezone
 getCurrentLocalDay :: IO Day
@@ -172,10 +170,10 @@ transformTasks (Para [Link [Str "!", Str "tasks"] (url, _)]) = do
     Right markdown ->
       -- markdown found? collect all tasks into a single bullet list
       let
-        Pandoc _ content = readMarkdown defaultParserState markdown
+        Pandoc _ content = readMarkdown (defaultParserState { stateSmart = True }) markdown
         tasks = filter showTask (findToplevelTasks content)
         showTask (Task (Open Today _) _ _) = True
-        showTask (Task (Open Next (Just due)) _ _) | not (today < due) = True
+        showTask (Task (Open Someday (Just due)) _ _) | not (today < due) = True
         showTask _ = False
       in
         return $ BulletList (map (formatTask today) tasks)
