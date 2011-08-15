@@ -20,7 +20,9 @@ Screenshot:
 ![Screenshot](https://github.com/downloads/catch22/gitit-tasks/Screenshot.png)
 
 Observe that, by default, only tasks which are *open* are displayed (i.e., tasks of the `[ ]` and `[?]` families).
-Moreover, the last task's due date is highlighted, as it has already passed.
+This can be changed by using the `tasks: all` page meta option.
+
+Also note that the last task's due date is highlighted, as it has already passed.
 
 # Aggregating Tasks
 

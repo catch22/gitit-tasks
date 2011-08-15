@@ -133,39 +133,40 @@ transformTasks :: Block -> PluginM Block
 
 -- ..formatting tasks in bullet lists
 transformTasks (BulletList items) = do
-    -- do not cache (time-dependent)
     doNotCache
-
-    -- determine current day
     today <- liftIO getCurrentLocalDay
+    showTask <- getTaskFilter
 
-    -- list all open tasks
-    return $ BulletList (catMaybes (map (transformItem today) items))
+    return $ let
+        transformItem :: [Block] -> Maybe [Block]
+        transformItem bs = case parseTask bs of
+          Result task -> if showTask (status task) then Just (formatTask today task) else Nothing
+          ParseError str -> Just [Plain [RawInline "html" "<font color='red'>", Str str, RawInline "html" "</font>"]]
+          NotATask -> Just bs
+      in
+        BulletList $ catMaybes $ map transformItem items
   where
-    transformItem :: Day -> [Block] -> Maybe [Block]
-    transformItem today bs = case parseTask bs of
-      Result task -> if showTask (status task) then Just (formatTask today task) else Nothing
-      ParseError str -> Just [Plain [RawInline "html" "<font color='red'>", Str str, RawInline "html" "</font>"]]
-      NotATask -> Just bs
+    getTaskFilter :: PluginM (Status -> Bool)
+    getTaskFilter = do
+      meta <- askMeta
+      return $ case lookup "tasks" meta of
+        Just "all" -> const True
+        _ -> isOpen
 
-    showTask :: Status -> Bool
-    --showTask _ = True
-    showTask (Open _ _) = True
-    showTask _ = False
+    isOpen :: Status -> Bool
+    isOpen (Open _ _) = True
+    isOpen _ = False
 
 -- ..aggregating tasks from other wiki pages
 transformTasks (Para [Link [Str "!", Str "tasks"] (url, _)]) = do
-  -- do not cache (time-dependent highlighting, dynamic aggregation)
   doNotCache
-
-  -- get current day
   today <- liftIO getCurrentLocalDay
 
-  -- load page from filestore
   cfg <- askConfig
   let filestore = filestoreFromConfig cfg
   let Just pageName = decString True url
   page <- try $ liftIO (retrieve filestore (pageName ++ ".page") Nothing)
+
   case page :: Either FileStoreError String of
     Left e ->
       -- does not exist? output ordinary wiki link
