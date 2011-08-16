@@ -53,12 +53,13 @@ parsePara (Str "[":statusInline:Str "]":Space:rest) makeBlock content = do
     parseMeta task rest
   where
     parseMeta :: Task -> [Inline] -> Parser Task
-    parseMeta task (Str year:EnDash:Str month:EnDash:Str day:Space:rest) = do
-        status' <- updateStatusWithDate date (status task)
-        let task' = task { status = status' }
-        parseMeta task' rest
-      where
-        date = readTime defaultTimeLocale "%Y-%m-%d" (year ++ "-" ++ month ++ "-" ++ day)
+    parseMeta task all@(Str year:EnDash:Str month:EnDash:Str day:Space:rest) =
+      case parseTime defaultTimeLocale "%Y-%m-%d" (year ++ "-" ++ month ++ "-" ++ day) of
+        Just date -> do
+          status' <- updateStatusWithDate date (status task)
+          let task' = task { status = status' }
+          parseMeta task' rest
+        Nothing -> return $ task { title = makeBlock all }
     parseMeta task (Str ('@':name):Space:rest) = do
       let task' = task { delegate = Just name }
       parseMeta task' rest
