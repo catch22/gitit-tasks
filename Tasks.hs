@@ -17,11 +17,12 @@ import Text.Pandoc (defaultParserState, ParserState(..), readMarkdown)
 
 
 data Focus = Today | Someday deriving (Eq, Show)
-data Status = Open { focus :: Focus, due :: Maybe Day }
+data Status =
+    Open { focus :: Focus, due :: Maybe Day }
   | Completed { on :: Maybe Day }
   | Canceled { on :: Maybe Day }
-  deriving Show
-data Task = Task { status :: Status, delegate :: Maybe String, title :: Block, content :: [Block] }
+    deriving Show
+data Task = Task { status :: Status, delegate :: Maybe String, title :: Block, content :: [Block] } deriving (Show)
 
 
 -- parse monad
@@ -41,7 +42,7 @@ getResult :: Parser a -> Maybe a
 getResult (Result x) = Just x
 getResult _ = Nothing
 
---- try to parse list of blocks (e.g., the children blocks of a bullet list) as a task
+--- try to parse list of blocks (e.g., a bullet list item) as a task
 parseTask :: [Block] -> Parser Task
 parseTask (Plain is':bs) = parsePara is' Plain bs
 parseTask (Para is':bs) = parsePara is' Para bs
