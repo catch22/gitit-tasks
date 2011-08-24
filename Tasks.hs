@@ -128,13 +128,18 @@ getCurrentLocalDay = do
 
 -- gitit plugin entry point
 plugin :: Plugin
-plugin = mkPageTransformM transformTasks
+plugin = mkPageTransformM transformPage
 
 -- transform page block by block..
-transformTasks :: Block -> PluginM Block
+transformPage :: Block -> PluginM Block
+transformPage (BulletList items) = formatTaskList items
+transformPage (Plain [Link [Str "!", Str "tasks"] (url, _)]) = aggregateTasks url
+transformPage (Para [Link [Str "!", Str "tasks"] (url, _)]) = aggregateTasks url
+transformPage other = return other
 
--- ..formatting tasks in bullet lists
-transformTasks (BulletList items) = do
+-- format task list
+formatTaskList :: [[Block]] -> PluginM Block
+formatTaskList items = do
     doNotCache
     today <- liftIO getCurrentLocalDay
     showTask <- getTaskFilter
@@ -159,14 +164,15 @@ transformTasks (BulletList items) = do
     isOpen (Open _ _) = True
     isOpen _ = False
 
--- ..aggregating tasks from other wiki pages
-transformTasks (Para [Link [Str "!", Str "tasks"] (url, _)]) = do
+-- aggregate tasks from other wiki pages
+aggregateTasks :: String -> PluginM Block
+aggregateTasks pageNameURL = do
   doNotCache
   today <- liftIO getCurrentLocalDay
 
   cfg <- askConfig
   let filestore = filestoreFromConfig cfg
-  let Just pageName = decString True url
+  let Just pageName = decString True pageNameURL
   page <- try $ liftIO (retrieve filestore (pageName ++ ".page") Nothing)
 
   case page :: Either FileStoreError String of
@@ -189,4 +195,3 @@ transformTasks (Para [Link [Str "!", Str "tasks"] (url, _)]) = do
       in
         return $ BulletList (map (formatTask today) tasks)
 
-transformTasks other = return other
