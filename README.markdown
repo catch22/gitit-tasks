@@ -2,6 +2,8 @@
 
 # Task Lists
 
+Task lists are lists containing at least one task (and then, *all* list items are treated as tasks).
+
 Example:
 
     # Sample Tasks
@@ -33,3 +35,7 @@ It is often useful to aggregate tasks from multiple wiki pages into a single pag
 by the list of all (top-level) tasks on the respective wiki page (here, `Shopping List`).
 
 By default, tasks are only displayed if they are of the `[ ]` family or if they are due.
+
+# Installation
+
+TBD.

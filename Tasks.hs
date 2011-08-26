@@ -1,6 +1,7 @@
 module Tasks (plugin) where
 
 import Control.Monad.CatchIO (try)
+import Data.Either
 import Data.FileStore (FileStoreError, retrieve)
 import Data.List.Split
 import Data.Maybe
@@ -21,32 +22,39 @@ data Status =
     Open { focus :: Focus, due :: Maybe Day }
   | Completed { on :: Maybe Day }
   | Canceled { on :: Maybe Day }
-    deriving Show
-data Task = Task { status :: Status, delegate :: Maybe String, title :: Block, content :: [Block] } deriving (Show)
+    deriving (Eq, Show)
+data Task = Task { status :: Status, delegate :: Maybe String, title :: Block, content :: [Block] } deriving (Eq, Show)
 
 
 -- parse monad
-data Parser a = Result a | ParseError String | NotATask
+data Parser a = Result a | ParseError String | NotAvailable deriving (Eq)
 
 instance Monad Parser where
   -- composition
   Result x >>= f = f x
   ParseError str >>= _ = ParseError str
-  NotATask >>= _ = NotATask
+  NotAvailable >>= _ = NotAvailable
 
   -- lifts
   return = Result
   fail = ParseError
 
-getResult :: Parser a -> Maybe a
-getResult (Result x) = Just x
-getResult _ = Nothing
+-- parse bullet list (items) as a task list
+parseTaskList :: [[Block]] -> Maybe [Either Task String]
+parseTaskList items = case map parseTask items of
+    results | all (== NotAvailable) results -> Nothing
+            | otherwise -> Just $ map (uncurry convert) (zip results items)
+  where
+    convert :: Parser Task -> [Block] -> Either Task String
+    convert (Result task) _ = Left task
+    convert (ParseError str) _ = Right str
+    convert NotAvailable (b:bs) = Left $ Task (Open Today Nothing) Nothing b bs
 
---- try to parse list of blocks (e.g., a bullet list item) as a task
+-- parse list of blocks (e.g., a bullet list item) as a task
 parseTask :: [Block] -> Parser Task
 parseTask (Plain is':bs) = parsePara is' Plain bs
 parseTask (Para is':bs) = parsePara is' Para bs
-parseTask _ = NotATask
+parseTask _ = NotAvailable
 
 parsePara :: [Inline] -> ([Inline] -> Block) -> [Block] -> Parser Task
 parsePara (Str "[":statusInline:Str "]":Space:rest) makeBlock content = do
@@ -76,15 +84,15 @@ parsePara (Str "[":statusInline:Str "]":Space:rest) makeBlock content = do
     taskForStatus (Str "?") title = return . Task (Open Someday Nothing) Nothing title
     taskForStatus (Str "x") title = return . Task (Completed Nothing) Nothing title
     taskForStatus (Str "/") title = return . Task (Canceled Nothing) Nothing title
-    taskForStatus _ _ = const NotATask
-parsePara _ _ _ = NotATask
+    taskForStatus _ _ = const NotAvailable
+parsePara _ _ _ = NotAvailable
 
 -- find all top-level tasks in the given blocks
 findToplevelTasks :: [Block] -> [Task]
-findToplevelTasks = catMaybes . map getResult . concat . map go
+findToplevelTasks = lefts . concat . catMaybes . map parseBlock
   where
-    go (BulletList items) = map parseTask items
-    go _ = []
+    parseBlock (BulletList items) = parseTaskList items
+    parseBlock _ = Nothing
 
 
 -- format task back into a list of blocks
@@ -125,47 +133,56 @@ getCurrentLocalDay = do
   time <- getCurrentTime
   return $ localDay $ utcToLocalTime timezone time
 
+-- wrap blocks in task list <div>
+wrapInDiv :: Block -> [Block]
+wrapInDiv block = [RawBlock "html" "<div class=\"tasks\">", block, RawBlock "html" "</div>"]
+
 
 -- gitit plugin entry point
 plugin :: Plugin
-plugin = mkPageTransformM transformPage
+plugin = mkPageTransformM transformBlocks
+  where
+    transformBlocks :: [Block] -> PluginM [Block]
+    transformBlocks (b:bs) = do
+      bs' <- transformBlock b
+      bs'' <- transformBlocks bs
+      return $ bs' ++ bs''
+    transformBlocks [] = return []
 
 -- transform page block by block..
-transformPage :: Block -> PluginM Block
-transformPage (BulletList items) = formatTaskList items
-transformPage (Plain [Link [Str "!", Str "tasks"] (url, _)]) = aggregateTasks url
-transformPage (Para [Link [Str "!", Str "tasks"] (url, _)]) = aggregateTasks url
-transformPage other = return other
+transformBlock :: Block -> PluginM [Block]
+transformBlock (BulletList items) = formatTaskList items
+transformBlock (Plain [Link [Str "!", Str "tasks"] (url, _)]) = aggregateTasks url
+transformBlock (Para [Link [Str "!", Str "tasks"] (url, _)]) = aggregateTasks url
+transformBlock other = return [other]
 
 -- format task list
-formatTaskList :: [[Block]] -> PluginM Block
+formatTaskList :: [[Block]] -> PluginM [Block]
 formatTaskList items = do
-    doNotCache
-    today <- liftIO getCurrentLocalDay
-    showTask <- getTaskFilter
+  doNotCache
+  today <- liftIO getCurrentLocalDay
+  showTask <- getTaskFilter
+  return $ case parseTaskList items of
+    Just results -> wrapInDiv $ BulletList $ catMaybes $ map formatResult results
+      where
+        formatResult :: Either Task String -> Maybe [Block]
+        formatResult (Left task) = if showTask (status task) then Just (formatTask today task) else Nothing
+        formatResult (Right error) = Just [Plain [RawInline "html" "<font color='red'>", Strong [Str error], RawInline "html" "</font>"]]
+    Nothing -> [BulletList items]
 
-    return $ let
-        transformItem :: [Block] -> Maybe [Block]
-        transformItem bs = case parseTask bs of
-          Result task -> if showTask (status task) then Just (formatTask today task) else Nothing
-          ParseError str -> Just [Plain [RawInline "html" "<font color='red'>", Str str, RawInline "html" "</font>"]]
-          NotATask -> Just bs
-      in
-        BulletList $ catMaybes $ map transformItem items
+getTaskFilter :: PluginM (Status -> Bool)
+getTaskFilter = do
+  meta <- askMeta
+  return $ case lookup "tasks" meta of
+    Just "all" -> const True
+    _ -> isOpen
   where
-    getTaskFilter :: PluginM (Status -> Bool)
-    getTaskFilter = do
-      meta <- askMeta
-      return $ case lookup "tasks" meta of
-        Just "all" -> const True
-        _ -> isOpen
-
     isOpen :: Status -> Bool
     isOpen (Open _ _) = True
     isOpen _ = False
 
 -- aggregate tasks from other wiki pages
-aggregateTasks :: String -> PluginM Block
+aggregateTasks :: String -> PluginM [Block]
 aggregateTasks pageNameURL = do
   doNotCache
   today <- liftIO getCurrentLocalDay
@@ -175,14 +192,14 @@ aggregateTasks pageNameURL = do
   let Just pageName = decString True pageNameURL
   page <- try $ liftIO (retrieve filestore (pageName ++ ".page") Nothing)
 
-  case page :: Either FileStoreError String of
+  return $ case page :: Either FileStoreError String of
     Left e ->
       -- does not exist? output ordinary wiki link
       let
         label = Str ("[!tasks](" ++ pageName ++ ")")
         alt = "'" ++ pageName ++ "' doesn't exist. Click here to create it."
       in
-        return $ Para [Link [label] (pageName, alt)]
+        [Para [Link [label] (pageName, alt)]]
     Right markdown ->
       -- markdown found? collect all tasks into a single bullet list
       let
@@ -193,5 +210,4 @@ aggregateTasks pageNameURL = do
         showTask (Open _ (Just due)) | not (today < due) = True   -- due
         showTask _ = False
       in
-        return $ BulletList (map (formatTask today) tasks)
-
+        wrapInDiv $ BulletList (map (formatTask today) tasks)
