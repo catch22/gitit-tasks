@@ -227,7 +227,7 @@ aggregateTasks pageNameURL = do
         tasks = filter showTask (findToplevelTasks content)
 
         showTask (Task (Open Today _) [] _ _ _) = True   -- undelegated and today
-        showTask (Task (Open _ (Just due)) _ _ _ _) | not (today < due) = True   -- due
+        showTask (Task (Open _ (Just due)) _ _ _ _) | not (today < warnDay due) = True   -- due
         showTask _ = False
       in
         wrapWithDiv "tasks" [BulletList $ map (formatTask today) tasks]
