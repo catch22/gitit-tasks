@@ -129,7 +129,7 @@ formatTask today (Task status delegate title content) = updateWrapped title upda
         Canceled _ -> " disabled=\"disabled\"") ++
       "\" />"
 
-    delegatePrefix | Just name <- delegate = wrapWithSpan "tasks-delegate" [Link [Str ('@':name)] ('@':name, "")] ++ [Space]
+    delegatePrefix | Just name <- delegate = [Link (wrapWithSpan "tasks-delegate-at" [Str "@"] ++ wrapWithSpan "tasks-delegate-name" [Str name]) ("/Users/" ++ name, "")] ++ [Space]
                    | otherwise = []
 
     dueDatePrefix | Just due <- dueDate = wrapDueDate due [Str (formatTime defaultTimeLocale "%b %e, %Y" due), Str ":", Space]

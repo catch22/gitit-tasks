@@ -47,7 +47,21 @@ input.tasks-status:enabled:not(:checked) + span.tasks-header > span.tasks-overdu
 }
 
 /* delegate */
-span.tasks-delegate {
+span.tasks-delegate-at {
+  font-weight: bold;
+  opacity: 0.8;
+}
+
+span.tasks-delegate-name {
+  font-weight: bold;
 }
 
 /* tag */
+span.tasks-tag-hash {
+  opacity: 0.8;
+  font-weight: bold;
+}
+
+span.tasks-tag-name {
+  font-weight: bold;
+}
