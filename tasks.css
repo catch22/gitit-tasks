@@ -48,7 +48,6 @@ input.tasks-status:enabled:not(:checked) + span.tasks-header > span.tasks-overdu
 
 /* delegate */
 span.tasks-delegate {
-  color: green;
 }
 
 /* tag */
