@@ -25,6 +25,12 @@ input.tasks-status:disabled + span.tasks-header {
   text-decoration: line-through;
 }
 
+input.tasks-status:checked + span.tasks-header a,
+input.tasks-status:disabled + span.tasks-header a {
+  color: gray;
+  text-decoration: underline;
+}
+
 input.tasks-status.tasks-someday:not(:checked):not(:disabled) + span.tasks-header {
   font-style: italic;
 }
@@ -48,20 +54,16 @@ input.tasks-status:enabled:not(:checked) + span.tasks-header > span.tasks-overdu
 
 /* delegate */
 span.tasks-delegate-at {
-  font-weight: bold;
   opacity: 0.8;
 }
 
 span.tasks-delegate-name {
-  font-weight: bold;
 }
 
 /* tag */
 span.tasks-tag-hash {
   opacity: 0.8;
-  font-weight: bold;
 }
 
 span.tasks-tag-name {
-  font-weight: bold;
 }
