@@ -25,7 +25,7 @@ data Status =
   | Completed { on :: Maybe Day }
   | Canceled { on :: Maybe Day }
     deriving (Eq, Show)
-data Task = Task { status :: Status, delegate :: Maybe String, title :: Block, content :: [Block] } deriving (Eq, Show)
+data Task = Task { status :: Status, delegates :: [String], tags :: [String], title :: Block, content :: [Block] } deriving (Eq, Show)
 
 isOpen :: Status -> Bool
 isOpen (Open _ _) = True
@@ -57,7 +57,7 @@ parseTaskList items = case map parseTask items of
     convert :: Parser Task -> [Block] -> Either Task String
     convert (Result task) _ = Left task
     convert (ParseError str) _ = Right str
-    convert NotAvailable (b:bs) = Left $ Task (Open Today Nothing) Nothing b bs
+    convert NotAvailable (b:bs) = Left $ Task (Open Today Nothing) [] [] b bs
 
 -- parse list of blocks (e.g., a bullet list item) as a task
 parseTask :: [Block] -> Parser Task
@@ -79,7 +79,10 @@ parsePara (Str "[":statusInline:Str "]":Space:rest) makeBlock content = do
           parseMeta task' rest
         Nothing -> return $ task { title = makeBlock all }
     parseMeta task (Str ('@':name):Space:rest) = do
-      let task' = task { delegate = Just name }
+      let task' = task { delegates = delegates task ++ [name] }
+      parseMeta task' rest
+    parseMeta task (Str "#":Str name:Space:rest) = do
+      let task' = task { tags = tags task ++ [name] }
       parseMeta task' rest
     parseMeta task rest = return $ task { title = makeBlock rest }
 
@@ -89,10 +92,10 @@ parsePara (Str "[":statusInline:Str "]":Space:rest) makeBlock content = do
     updateStatusWithDate done (Canceled _) = return $ Canceled (Just done)
 
     taskForStatus :: Inline -> Block -> [Block] -> Parser Task
-    taskForStatus Space title = return . Task (Open Today Nothing) Nothing title
-    taskForStatus (Str "?") title = return . Task (Open Someday Nothing) Nothing title
-    taskForStatus (Str "x") title = return . Task (Completed Nothing) Nothing title
-    taskForStatus (Str "/") title = return . Task (Canceled Nothing) Nothing title
+    taskForStatus Space title = return . Task (Open Today Nothing) [] [] title
+    taskForStatus (Str "?") title = return . Task (Open Someday Nothing) [] [] title
+    taskForStatus (Str "x") title = return . Task (Completed Nothing) [] [] title
+    taskForStatus (Str "/") title = return . Task (Canceled Nothing) [] [] title
     taskForStatus _ _ = const NotAvailable
 parsePara _ _ _ = NotAvailable
 
@@ -117,9 +120,9 @@ updateWrapped (Para inlines) f = Para (f inlines)
 
 -- format task as a list of blocks
 formatTask :: Day -> Task -> [Block]
-formatTask today (Task status delegate title content) = updateWrapped title update : content
+formatTask today (Task status delegates tags title content) = updateWrapped title update : content
   where
-    update inlines = statusBox : wrapWithSpan "tasks-header" (delegatePrefix ++ dueDatePrefix ++ inlines)
+    update inlines = statusBox : wrapWithSpan "tasks-header" (dueDatePrefix ++ delegatePrefix ++ tagPrefix ++ inlines)
 
     statusBox = RawInline "html" $ "<input type=\"checkbox\" class=\"tasks-status" ++ (case status of
         Open Someday _ -> " tasks-someday"
@@ -130,15 +133,16 @@ formatTask today (Task status delegate title content) = updateWrapped title upda
         Canceled _ -> " disabled=\"disabled\"") ++
       "\" />"
 
-    delegatePrefix | Just name <- delegate = [Link (wrapWithSpan "tasks-delegate-at" [Str "@"] ++ wrapWithSpan "tasks-delegate-name" [Str name]) ("/Users/" ++ name, "")] ++ [Space]
-                   | otherwise = []
-
     dueDatePrefix | Just due <- dueDate = wrapDueDate due [Str (formatTime defaultTimeLocale "%b %e, %Y" due), Str ":", Space]
                   | otherwise = []
 
     wrapDueDate due | not (today < due) = wrapWithSpan "tasks-overdue"
                     | not (today < warnDay due) = wrapWithSpan "tasks-warndue"
                     | otherwise = id
+
+    delegatePrefix = concat [[Link (wrapWithSpan "tasks-delegate-at" [Str "@"] ++ wrapWithSpan "tasks-delegate-name" [Str name]) ("/Users/" ++ name, "")] ++ [Space] | name <- delegates]
+
+    tagPrefix = concat [[Link (wrapWithSpan "tasks-tag-hash" [Str "#"] ++ wrapWithSpan "tasks-tag-name" [Str name]) ("/Tags/" ++ name, "")] ++ [Space] | name <- tags]
 
     dueDate = case status of
       Open _ due -> due
@@ -220,10 +224,10 @@ aggregateTasks pageNameURL = do
       -- markdown found? collect all tasks into a single bullet list
       let
         Pandoc _ content = readMarkdown (defaultParserState { stateSmart = True }) markdown
-        tasks = filter (showTask . status) (findToplevelTasks content)
+        tasks = filter showTask (findToplevelTasks content)
 
-        showTask (Open Today _) = True   -- undelegated and today
-        showTask (Open _ (Just due)) | not (today < due) = True   -- due
+        showTask (Task (Open Today _) [] _ _ _) = True   -- undelegated and today
+        showTask (Task (Open _ (Just due)) _ _ _ _) | not (today < due) = True   -- due
         showTask _ = False
       in
         wrapWithDiv "tasks" [BulletList $ map (formatTask today) tasks]
