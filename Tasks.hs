@@ -1,7 +1,9 @@
 {-# LANGUAGE PatternGuards #-}
 module Tasks (plugin) where
 
+import Control.Monad
 import Control.Monad.CatchIO (try)
+import Data.Char (toUpper)
 import Data.Either
 import Data.FileStore (FileStoreError, retrieve)
 import Data.List.Split
@@ -31,9 +33,25 @@ isOpen :: Status -> Bool
 isOpen (Open _ _) = True
 isOpen _ = False
 
-warnDay :: Day ->Day
-warnDay = addDays (-2)
+isToday :: Status -> Bool
+isToday (Open Today _) = True
+isToday _ = False
 
+dueDate :: Status -> Maybe Day
+dueDate status = case status of
+  Open _ due -> due
+  Completed due -> due
+  Canceled due -> due
+
+isDue :: Day -> Status -> Bool
+isDue today status | Just due <- dueDate status = isOpen status && not (today < due)
+                   | otherwise = False
+
+isSoonDue :: Day -> Status -> Bool
+isSoonDue today status = isDue (addDays 2 today) status
+
+isDelegatedTo :: Task -> String -> Bool
+isDelegatedTo task username = username `elem` delegates task
 
 -- parse monad
 data Parser a = Result a | ParseError String | NotAvailable deriving (Eq)
@@ -133,21 +151,16 @@ formatTask today (Task status delegates tags title content) = updateWrapped titl
         Canceled _ -> " disabled=\"disabled\"") ++
       "\" />"
 
-    dueDatePrefix | Just due <- dueDate = wrapDueDate due [Str (formatTime defaultTimeLocale "%b %e, %Y" due), Str ":", Space]
+    dueDatePrefix | Just due <- dueDate status = wrapDueDate [Str (formatTime defaultTimeLocale "%b %e, %Y" due), Str ":", Space]
                   | otherwise = []
 
-    wrapDueDate due | not (today < due) = wrapWithSpan "tasks-overdue"
-                    | not (today < warnDay due) = wrapWithSpan "tasks-warndue"
-                    | otherwise = id
+    wrapDueDate | isDue today status = wrapWithSpan "tasks-due"
+                | isSoonDue today status = wrapWithSpan "tasks-soondue"
+                | otherwise = id
 
     delegatePrefix = concat [[Link (wrapWithSpan "tasks-delegate-at" [Str "@"] ++ wrapWithSpan "tasks-delegate-name" [Str name]) ("/Users/" ++ name, "")] ++ [Space] | name <- delegates]
 
     tagPrefix = concat [[Link (wrapWithSpan "tasks-tag-hash" [Str "#"] ++ wrapWithSpan "tasks-tag-name" [Str name]) ("/Tags/" ++ name, "")] ++ [Space] | name <- tags]
-
-    dueDate = case status of
-      Open _ due -> due
-      Completed due -> due
-      Canceled due -> due
 
 
 -- current day in current timezone
@@ -171,9 +184,44 @@ plugin = mkPageTransformM transformBlocks
 -- transform page block by block..
 transformBlock :: Block -> PluginM [Block]
 transformBlock (BulletList items) = formatTaskList items
-transformBlock (Plain [Link [Str "!", Str "tasks"] (url, _)]) = aggregateTasks url
-transformBlock (Para [Link [Str "!", Str "tasks"] (url, _)]) = aggregateTasks url
+transformBlock (Plain [Link [Str "!", Str title] (url, _)]) | Just showTaskM <- lookup title aggregators = showTaskM >>= aggregateTasks url
+transformBlock (Para [Link [Str "!", Str title] (url, _)]) | Just showTaskM <- lookup title aggregators = showTaskM >>= aggregateTasks url
 transformBlock other = return [other]
+
+aggregators :: [(String, PluginM (Task -> Bool))]
+aggregators = [("tasks", ((isUndelegatedM `orP` isDelegatedToMeM) `andP` isTodayM) `orP` isSoonDueM),
+    ("duetasks", isSoonDueM),
+    ("tasksdelegatedtome", isDelegatedToMeM `andP` (isTodayM `orP` isSoonDueM))]
+  where
+    isUndelegatedM :: PluginM (Task -> Bool)
+    isUndelegatedM = return ((== []) . delegates)
+
+    isTodayM :: PluginM (Task -> Bool)
+    isTodayM = return (isToday . status)
+
+    isSoonDueM :: PluginM (Task -> Bool)
+    isSoonDueM = do
+      doNotCache
+      today <- liftIO getCurrentLocalDay
+      return (isSoonDue today . status)
+
+    isDelegatedToMeM :: PluginM (Task -> Bool)
+    isDelegatedToMeM = do
+      doNotCache
+      user <- askUser
+      let username = liftM (capitalize . uUsername) user where capitalize (c:cs) = toUpper c:cs
+      return $ \task -> isOpen (status task) && maybe False (task `isDelegatedTo`) username
+
+    orP, andP :: PluginM (Task -> Bool) -> PluginM (Task -> Bool) -> PluginM (Task -> Bool)
+    left `orP` right = do
+      f <- left
+      g <- right
+      return $ \task -> f task || g task
+    left `andP` right = do
+      f <- left
+      g <- right
+      return $ \task -> f task && g task
+
 
 -- format task list
 formatTaskList :: [[Block]] -> PluginM [Block]
@@ -197,8 +245,8 @@ getTaskFilter = do
     _ -> isOpen
 
 -- aggregate tasks from other wiki pages
-aggregateTasks :: String -> PluginM [Block]
-aggregateTasks pageNameURL = do
+aggregateTasks :: String -> (Task -> Bool) -> PluginM [Block]
+aggregateTasks pageNameURL showTask = do
   doNotCache
   today <- liftIO getCurrentLocalDay
 
@@ -225,9 +273,5 @@ aggregateTasks pageNameURL = do
       let
         Pandoc _ content = readMarkdown (defaultParserState { stateSmart = True }) markdown
         tasks = filter showTask (findToplevelTasks content)
-
-        showTask (Task (Open Today _) [] _ _ _) = True   -- undelegated and today
-        showTask (Task (Open _ (Just due)) _ _ _ _) | not (today < warnDay due) = True   -- due
-        showTask _ = False
       in
         wrapWithDiv "tasks" [BulletList $ map (formatTask today) tasks]

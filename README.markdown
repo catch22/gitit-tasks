@@ -30,13 +30,21 @@ This can be changed by using the `tasks: all` page meta option:
 
 # Aggregating Tasks
 
-It is often useful to aggregate tasks from multiple wiki pages into a single page. To this end, `gitit-tasks` dynamically replaces every link of the form
+It is often useful to aggregate tasks from multiple wiki pages into a single page (e.g., a user's homepage). There are three variants provided by `gitit-tasks`:
 
-    [!tasks](Shopping List)
+1. Aggregating all tasks which are marked as today and which are not delegated to anyone else, as well as due tasks:
 
-by the list of all (top-level) tasks on the respective wiki page (here, `Shopping List`).
+        [!tasks](Some Shared Project)
 
-By default, tasks are only displayed if they are of the `[ ]` family or if they are (almost) due.
+1. Aggregating only those tasks which are due:
+
+        [!duetasks](Scheduled Tasks)
+
+1. Aggregating all tasks which are marked as today or which are due (as in 1.), but only if they are explicitely delegated to us:
+
+        [!tasksdelegatedtome](Other User's Home Page)
+
+`gitit-tasks` dynamically replaces every link of the form of the above form by the list of relevant (top-level) tasks on the respective wiki page.
 
 # Installation
 

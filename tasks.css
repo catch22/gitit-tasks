@@ -43,11 +43,11 @@ input.tasks-status {
 }
 
 /* due date */
-input.tasks-status:enabled:not(:checked) + span.tasks-header > span.tasks-warndue {
+input.tasks-status:enabled:not(:checked) + span.tasks-header > span.tasks-soondue {
   font-weight: bold;
 }
 
-input.tasks-status:enabled:not(:checked) + span.tasks-header > span.tasks-overdue {
+input.tasks-status:enabled:not(:checked) + span.tasks-header > span.tasks-due {
   font-weight: bold;
   color: red;
 }
