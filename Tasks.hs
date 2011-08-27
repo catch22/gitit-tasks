@@ -1,3 +1,4 @@
+{-# LANGUAGE PatternGuards #-}
 module Tasks (plugin) where
 
 import Control.Monad.CatchIO (try)
@@ -24,6 +25,13 @@ data Status =
   | Canceled { on :: Maybe Day }
     deriving (Eq, Show)
 data Task = Task { status :: Status, delegate :: Maybe String, title :: Block, content :: [Block] } deriving (Eq, Show)
+
+isOpen :: Status -> Bool
+isOpen (Open _ _) = True
+isOpen _ = False
+
+warnDay :: Day ->Day
+warnDay = addDays (-2)
 
 
 -- parse monad
@@ -95,36 +103,47 @@ findToplevelTasks = lefts . concat . catMaybes . map parseBlock
     parseBlock _ = Nothing
 
 
--- format task back into a list of blocks
+-- wrapping utilities
+wrapWithSpan :: String -> [Inline] -> [Inline]
+wrapWithSpan class_ inlines = [RawInline "html" ("<span class=\"" ++ class_ ++ "\">")] ++ inlines ++ [RawInline "html" "</span>"]
+
+wrapWithDiv :: String -> [Block] -> [Block]
+wrapWithDiv class_ blocks = [RawBlock "html" ("<div class=\"" ++ class_ ++ "\">")] ++ blocks ++ [RawBlock "html" "</div>"]
+
+updateWrapped :: Block -> ([Inline] -> [Inline]) -> Block
+updateWrapped (Plain inlines) f = Plain (f inlines)
+updateWrapped (Para inlines) f = Para (f inlines)
+
+-- format task as a list of blocks
 formatTask :: Day -> Task -> [Block]
-formatTask today (Task (Open Today due) delegate title content) = formatTitle (Just today) (prefixDelegate delegate) id due title : content
-formatTask today (Task (Open Someday due) delegate title content) = formatTitle (Just today) (prefixDelegate delegate . emph) id due title : content
-  where emph is = [Emph is]
-formatTask _ (Task (Completed done) delegate title content) = formatTitle Nothing (prefixDone "☒ Completed:" . prefixDelegate delegate) id done title : content
-formatTask _ (Task (Canceled done) delegate title content) = formatTitle Nothing (prefixDone "☒ Canceled:" . prefixDelegate delegate) strikeout done title : content
-  where strikeout is = [Strikeout is]   --- does not do anything due to Pandoc bug
-
-prefixDelegate :: Maybe String -> [Inline] -> [Inline]
-prefixDelegate (Just name) is = Link [Str ('@':name)] ('@':name,"") : Space : is
-prefixDelegate Nothing is = is
-
-prefixDone :: String -> [Inline] -> [Inline]
-prefixDone str is = Emph [Str str] : Space : is
-
-formatTitle :: Maybe Day -> ([Inline] -> [Inline]) -> ([Inline] -> [Inline]) -> Maybe Day -> Block -> Block
-formatTitle maybeToday prefix wrap day (Plain is) = Plain $ prefix $ formatDay maybeToday day ++ wrap is
-formatTitle maybeToday prefix wrap day (Para is) = Para $ prefix $ formatDay maybeToday day ++ wrap is
-
-formatDay :: Maybe Day -> Maybe Day -> [Inline]
-formatDay maybeToday (Just day) = (decorate maybeToday) [Str (formatTime defaultTimeLocale "%b %e, %Y" day), Str ":", Space]
+formatTask today (Task status delegate title content) = updateWrapped title update : content
   where
-    decorate (Just today) is | not (today < day) = [RawInline "html" "<font color='red'>", Strong is, RawInline "html" "</font>"]
-    decorate (Just today) is | not (today < warnDay day) = [Strong is]
-    decorate _ is = is
-formatDay _ Nothing = []
+    update inlines = statusBox : wrapWithSpan "tasks-header" (delegatePrefix ++ dueDatePrefix ++ inlines)
 
-warnDay :: Day ->Day
-warnDay = addDays (-2)
+    statusBox = RawInline "html" $ "<input type=\"checkbox\" class=\"tasks-status" ++ (case status of
+        Open Someday _ -> " tasks-someday"
+        otherwise -> "") ++
+      "\"" ++ (case status of
+        Open _ _ -> ""
+        Completed _ -> " checked=\"checked\""
+        Canceled _ -> " disabled=\"disabled\"") ++
+      "\" />"
+
+    delegatePrefix | Just name <- delegate = wrapWithSpan "tasks-delegate" [Link [Str ('@':name)] ('@':name, "")] ++ [Space]
+                   | otherwise = []
+
+    dueDatePrefix | Just due <- dueDate = wrapDueDate due [Str (formatTime defaultTimeLocale "%b %e, %Y" due), Str ":", Space]
+                  | otherwise = []
+
+    wrapDueDate due | not (today < due) = wrapWithSpan "tasks-overdue"
+                    | not (today < warnDay due) = wrapWithSpan "tasks-warndue"
+                    | otherwise = id
+
+    dueDate = case status of
+      Open _ due -> due
+      Completed due -> due
+      Canceled due -> due
+
 
 -- current day in current timezone
 getCurrentLocalDay :: IO Day
@@ -132,11 +151,6 @@ getCurrentLocalDay = do
   timezone <- getCurrentTimeZone
   time <- getCurrentTime
   return $ localDay $ utcToLocalTime timezone time
-
--- wrap blocks in task list <div>
-wrapInDiv :: Block -> [Block]
-wrapInDiv block = [RawBlock "html" "<div class=\"tasks\">", block, RawBlock "html" "</div>"]
-
 
 -- gitit plugin entry point
 plugin :: Plugin
@@ -163,11 +177,11 @@ formatTaskList items = do
   today <- liftIO getCurrentLocalDay
   showTask <- getTaskFilter
   return $ case parseTaskList items of
-    Just results -> wrapInDiv $ BulletList $ catMaybes $ map formatResult results
+    Just results -> wrapWithDiv "tasks" [BulletList $ catMaybes $ map formatResult results]
       where
         formatResult :: Either Task String -> Maybe [Block]
         formatResult (Left task) = if showTask (status task) then Just (formatTask today task) else Nothing
-        formatResult (Right error) = Just [Plain [RawInline "html" "<font color='red'>", Strong [Str error], RawInline "html" "</font>"]]
+        formatResult (Right error) = Just [Plain $ wrapWithSpan "tasks-error" [Str error]]
     Nothing -> [BulletList items]
 
 getTaskFilter :: PluginM (Status -> Bool)
@@ -176,10 +190,6 @@ getTaskFilter = do
   return $ case lookup "tasks" meta of
     Just "all" -> const True
     _ -> isOpen
-  where
-    isOpen :: Status -> Bool
-    isOpen (Open _ _) = True
-    isOpen _ = False
 
 -- aggregate tasks from other wiki pages
 aggregateTasks :: String -> PluginM [Block]
@@ -210,4 +220,4 @@ aggregateTasks pageNameURL = do
         showTask (Open _ (Just due)) | not (today < due) = True   -- due
         showTask _ = False
       in
-        wrapInDiv $ BulletList (map (formatTask today) tasks)
+        wrapWithDiv "tasks" [BulletList $ map (formatTask today) tasks]

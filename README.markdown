@@ -19,12 +19,14 @@ Example:
 
 Screenshot:
 
-![Screenshot](https://github.com/downloads/catch22/gitit-tasks/Screenshot.png)
+![Screenshot](https://github.com/downloads/catch22/gitit-tasks/Screenshot1.png)
 
-Observe that, by default, only tasks which are *open* are displayed (i.e., tasks of the `[ ]` and `[?]` families).
-This can be changed by using the `tasks: all` page meta option.
+Observe that the last task's due date has been highlighted, as it has already passed.
 
-Also note that the last task's due date is highlighted, as it has already passed.
+Also note that, by default, only tasks which are *open* are displayed (i.e., tasks of the `[ ]` and `[?]` families).
+This can be changed by using the `tasks: all` page meta option:
+
+![Screenshot](https://github.com/downloads/catch22/gitit-tasks/Screenshot2.png)
 
 # Aggregating Tasks
 

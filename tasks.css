@@ -1,3 +1,54 @@
-div.tasks > ul {
-  list-style-type: circle;
+/* error messages */
+span.tasks-error {
+  font-weight: bold;
+  color: red;
 }
+
+/* task lists */
+div.tasks > ul {
+  list-style: none;
+}
+
+div.tasks > ul > li {
+  position: relative;
+}
+
+/* header */
+input.tasks-status:checked + span.tasks-header {
+  color: gray;
+  font-style: italic;
+}
+
+input.tasks-status:disabled + span.tasks-header {
+  color: gray;
+  font-style: italic;
+  text-decoration: line-through;
+}
+
+input.tasks-status.tasks-someday:not(:checked):not(:disabled) + span.tasks-header {
+  font-style: italic;
+}
+
+/* checkbox */
+input.tasks-status {
+  position: absolute;
+  left: -20px;
+  top: 3.5px;
+}
+
+/* due date */
+input.tasks-status:enabled:not(:checked) + span.tasks-header > span.tasks-warndue {
+  font-weight: bold;
+}
+
+input.tasks-status:enabled:not(:checked) + span.tasks-header > span.tasks-overdue {
+  font-weight: bold;
+  color: red;
+}
+
+/* delegate */
+span.tasks-delegate {
+  color: green;
+}
+
+/* tag */
