@@ -14,6 +14,7 @@ import Network.Gitit.Interface
 import Network.Gitit.Framework (filestoreFromConfig)
 import Network.Gitit.ContentTransformer (inlinesToString)
 import Network.URL (decString)
+import System.FilePath
 import System.Locale
 import Text.Pandoc (defaultParserState, ParserState(..), readMarkdown)
 
@@ -200,7 +201,12 @@ aggregateTasks pageNameURL = do
   cfg <- askConfig
   let filestore = filestoreFromConfig cfg
   let Just pageName = decString True pageNameURL
-  page <- try $ liftIO (retrieve filestore (pageName ++ ".page") Nothing)
+
+  ctx <- getContext
+  let cwd = '/' : takeDirectory (ctxFile ctx)
+  let ('/':absPageName) = combine cwd pageName
+
+  page <- try $ liftIO (retrieve filestore (absPageName ++ ".page") Nothing)
 
   return $ case page :: Either FileStoreError String of
     Left e ->
