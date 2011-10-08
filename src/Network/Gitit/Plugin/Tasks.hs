@@ -274,4 +274,4 @@ aggregateTasks pageNameURL showTask = do
         Pandoc _ content = readMarkdown (defaultParserState { stateSmart = True }) markdown
         tasks = filter showTask (findToplevelTasks content)
       in
-        wrapWithDiv "tasks" [BulletList $ map (formatTask today) tasks]
+        if tasks == [] then [] else wrapWithDiv "tasks" [BulletList $ map (formatTask today) tasks]
