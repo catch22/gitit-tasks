@@ -1,5 +1,12 @@
 `gitit-tasks` is a plugin for [gitit](http://gitit.net/) which allows for convenient task list management.
 
+# Installation
+
+    cabal install gitit-tasks
+    cd $GITIT
+    mkdir -p static/css
+    ln -sf ~/.cabal/share/gitit-tasks-0.1/static/css/tasks.css .
+
 # Task Lists
 
 Task lists are lists containing at least one task (and then, *all* list items are treated as tasks).
@@ -45,7 +52,3 @@ It is often useful to aggregate tasks from multiple wiki pages into a single pag
         [!tasksdelegatedtome](Other User's Home Page)
 
 `gitit-tasks` dynamically replaces every link of the form of the above form by the list of relevant (top-level) tasks on the respective wiki page.
-
-# Installation
-
-TBD.

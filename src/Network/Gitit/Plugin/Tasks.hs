@@ -1,5 +1,5 @@
 {-# LANGUAGE PatternGuards #-}
-module Tasks (plugin) where
+module Network.Gitit.Plugin.Tasks (plugin) where
 
 import Control.Monad
 import Control.Monad.CatchIO (try)
