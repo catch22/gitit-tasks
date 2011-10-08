@@ -184,14 +184,27 @@ plugin = mkPageTransformM transformBlocks
 -- transform page block by block..
 transformBlock :: Block -> PluginM [Block]
 transformBlock (BulletList items) = formatTaskList items
-transformBlock (Plain [Link [Str "!", Str title] (url, _)]) | Just showTaskM <- lookup title aggregators = showTaskM >>= aggregateTasks url
-transformBlock (Para [Link [Str "!", Str title] (url, _)]) | Just showTaskM <- lookup title aggregators = showTaskM >>= aggregateTasks url
+transformBlock (Plain [Link title (url, _)]) | Just (showTaskM, postprocess) <- lookupAggregator title = showTaskM >>= aggregateTasks url >>= return . postprocess url
+transformBlock (Para [Link title (url, _)]) | Just (showTaskM, postprocess) <- lookupAggregator title = showTaskM >>= aggregateTasks url >>= return . postprocess url
 transformBlock other = return [other]
 
+lookupAggregator :: [Inline] -> Maybe (PluginM (Task -> Bool), String -> [Block] -> [Block])
+lookupAggregator [Str "!", Str name] = do showTaskM <- lookup name aggregators; return (showTaskM, const id)
+lookupAggregator [Str "!", Str "#", Str name] = do showTaskM <- lookup name aggregators; return (showTaskM, prefixWithUrl 1)
+lookupAggregator [Str "!", Str "#", Str "#", Str name] = do showTaskM <- lookup name aggregators; return (showTaskM, prefixWithUrl 2)
+lookupAggregator [Str "!", Str "#", Str "#", Str "#", Str name] = do showTaskM <- lookup name aggregators; return (showTaskM, prefixWithUrl 3)
+lookupAggregator _ = Nothing
+
+prefixWithUrl :: Int -> String -> [Block] -> [Block]
+prefixWithUrl _ _ [] = []
+prefixWithUrl n url blocks = Header n [Link [Str (fromMaybe url $ decString True url)] (url, "")] : blocks
+
 aggregators :: [(String, PluginM (Task -> Bool))]
-aggregators = [("tasks", ((isUndelegatedM `orP` isDelegatedToMeM) `andP` isTodayM) `orP` isSoonDueM),
-    ("duetasks", isSoonDueM),
-    ("tasksdelegatedtome", isDelegatedToMeM `andP` (isTodayM `orP` isSoonDueM))]
+aggregators = [
+      ("tasks", ((isUndelegatedM `orP` isDelegatedToMeM) `andP` isTodayM) `orP` isSoonDueM),
+      ("duetasks", isSoonDueM),
+      ("tasksdelegatedtome", isDelegatedToMeM `andP` (isTodayM `orP` isSoonDueM))
+    ]
   where
     isUndelegatedM :: PluginM (Task -> Bool)
     isUndelegatedM = return ((== []) . delegates)
