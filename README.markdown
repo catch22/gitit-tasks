@@ -2,7 +2,8 @@
 
 # Installation
 
-    cabal install gitit-tasks
+    # cabal install gitit-tasks
+    git clone git@github.com:catch22/gitit-tasks.git && cd gitit-tasks && cabal install --user
 
     cd $MY-GITIT-WIKI
     mkdir -p static/css
