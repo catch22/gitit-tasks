@@ -3,9 +3,10 @@
 # Installation
 
     cabal install gitit-tasks
+
     cd $GITIT
     mkdir -p static/css
-    ln -sf ~/.cabal/share/gitit-tasks-0.1/static/css/tasks.css .
+    ln -sf ~/.cabal/share/gitit-tasks-0.1/static/css/tasks.css static/css/tasks.css
 
 # Task Lists
 
