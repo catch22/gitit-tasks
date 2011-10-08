@@ -48,7 +48,7 @@ isDue today status | Just due <- dueDate status = isOpen status && not (today < 
                    | otherwise = False
 
 isSoonDue :: Day -> Status -> Bool
-isSoonDue today status = isDue (addDays 2 today) status
+isSoonDue today = isDue (addDays 2 today)
 
 isDelegatedTo :: Task -> String -> Bool
 isDelegatedTo task username = username `elem` delegates task
@@ -70,7 +70,7 @@ instance Monad Parser where
 parseTaskList :: [[Block]] -> Maybe [Either Task String]
 parseTaskList items = case map parseTask items of
     results | all (== NotAvailable) results -> Nothing
-            | otherwise -> Just $ map (uncurry convert) (zip results items)
+            | otherwise -> Just $ zipWith convert results items
   where
     convert :: Parser Task -> [Block] -> Either Task String
     convert (Result task) _ = Left task
@@ -119,7 +119,7 @@ parsePara _ _ _ = NotAvailable
 
 -- find all top-level tasks in the given blocks
 findToplevelTasks :: [Block] -> [Task]
-findToplevelTasks = lefts . concat . catMaybes . map parseBlock
+findToplevelTasks = lefts . concat . mapMaybe parseBlock
   where
     parseBlock (BulletList items) = parseTaskList items
     parseBlock _ = Nothing
@@ -158,9 +158,9 @@ formatTask today (Task status delegates tags title content) = updateWrapped titl
                 | isSoonDue today status = wrapWithSpan "tasks-soondue"
                 | otherwise = id
 
-    delegatePrefix = concat [[Link (wrapWithSpan "tasks-delegate-at" [Str "@"] ++ wrapWithSpan "tasks-delegate-name" [Str name]) ("/Users/" ++ name, "")] ++ [Space] | name <- delegates]
+    delegatePrefix = concat [Link (wrapWithSpan "tasks-delegate-at" [Str "@"] ++ wrapWithSpan "tasks-delegate-name" [Str name]) ("/Users/" ++ name, "") : [Space] | name <- delegates]
 
-    tagPrefix = concat [[Link (wrapWithSpan "tasks-tag-hash" [Str "#"] ++ wrapWithSpan "tasks-tag-name" [Str name]) ("/Tags/" ++ name, "")] ++ [Space] | name <- tags]
+    tagPrefix = concat [Link (wrapWithSpan "tasks-tag-hash" [Str "#"] ++ wrapWithSpan "tasks-tag-name" [Str name]) ("/Tags/" ++ name, "") : [Space] | name <- tags]
 
 
 -- current day in current timezone
@@ -230,7 +230,7 @@ formatTaskList items = do
   today <- liftIO getCurrentLocalDay
   showTask <- getTaskFilter
   return $ case parseTaskList items of
-    Just results -> wrapWithDiv "tasks" [BulletList $ catMaybes $ map formatResult results]
+    Just results -> wrapWithDiv "tasks" [BulletList $ mapMaybe formatResult results]
       where
         formatResult :: Either Task String -> Maybe [Block]
         formatResult (Left task) = if showTask (status task) then Just (formatTask today task) else Nothing
