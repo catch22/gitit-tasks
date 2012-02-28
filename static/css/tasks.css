@@ -39,7 +39,7 @@ input.tasks-status.tasks-someday:not(:checked):not(:disabled) + span.tasks-heade
 input.tasks-status {
   position: absolute;
   left: -20px;
-  top: 3.5px;
+  top: 0px;
 }
 
 /* due date */
