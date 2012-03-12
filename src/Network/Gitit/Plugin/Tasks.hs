@@ -89,7 +89,7 @@ parsePara (Str "[":statusInline:Str "]":Space:rest) makeBlock content = do
     parseMeta task rest
   where
     parseMeta :: Task -> [Inline] -> Parser Task
-    parseMeta task all@(Str year:EnDash:Str month:EnDash:Str day:Space:rest) =
+    parseMeta task all@(Str year:Str "-":Str month:Str "-":Str day:Space:rest) =
       case parseTime defaultTimeLocale "%Y-%m-%d" (year ++ "-" ++ month ++ "-" ++ day) of
         Just date -> do
           status' <- updateStatusWithDate date (status task)
