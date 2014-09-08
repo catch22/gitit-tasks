@@ -18,7 +18,7 @@ import Network.Gitit.ContentTransformer (inlinesToString)
 import Network.URL (decString)
 import System.FilePath
 import System.Locale
-import Text.Pandoc (defaultParserState, ParserState(..), readMarkdown)
+import Text.Pandoc (def, readMarkdown, readerSmart)
 
 
 data Focus = Today | Someday deriving (Eq, Show)
@@ -89,7 +89,7 @@ parsePara (Str "[":statusInline:Str "]":Space:rest) makeBlock content = do
     parseMeta task rest
   where
     parseMeta :: Task -> [Inline] -> Parser Task
-    parseMeta task all@(Str year:EnDash:Str month:EnDash:Str day:Space:rest) =
+    parseMeta task all@(Str year:Str "-":Str month:Str "-":Str day:Space:rest) =
       case parseTime defaultTimeLocale "%Y-%m-%d" (year ++ "-" ++ month ++ "-" ++ day) of
         Just date -> do
           status' <- updateStatusWithDate date (status task)
@@ -127,10 +127,10 @@ findToplevelTasks = lefts . concat . mapMaybe parseBlock
 
 -- wrapping utilities
 wrapWithSpan :: String -> [Inline] -> [Inline]
-wrapWithSpan class_ inlines = [RawInline "html" ("<span class=\"" ++ class_ ++ "\">")] ++ inlines ++ [RawInline "html" "</span>"]
+wrapWithSpan class_ inlines = [RawInline (Format "html") ("<span class=\"" ++ class_ ++ "\">")] ++ inlines ++ [RawInline (Format "html") "</span>"]
 
 wrapWithDiv :: String -> [Block] -> [Block]
-wrapWithDiv class_ blocks = [RawBlock "html" ("<div class=\"" ++ class_ ++ "\">")] ++ blocks ++ [RawBlock "html" "</div>"]
+wrapWithDiv class_ blocks = [RawBlock (Format "html") ("<div class=\"" ++ class_ ++ "\">")] ++ blocks ++ [RawBlock (Format "html") "</div>"]
 
 updateWrapped :: Block -> ([Inline] -> [Inline]) -> Block
 updateWrapped (Plain inlines) f = Plain (f inlines)
@@ -142,7 +142,7 @@ formatTask today (Task status delegates tags title content) = updateWrapped titl
   where
     update inlines = statusBox : wrapWithSpan "tasks-header" (dueDatePrefix ++ delegatePrefix ++ tagPrefix ++ inlines)
 
-    statusBox = RawInline "html" $ "<input type=\"checkbox\" class=\"tasks-status" ++ (case status of
+    statusBox = RawInline (Format "html") $ "<input type=\"checkbox\" class=\"tasks-status" ++ (case status of
         Open Someday _ -> " tasks-someday"
         otherwise -> "") ++
       "\"" ++ (case status of
@@ -197,7 +197,7 @@ lookupAggregator _ = Nothing
 
 prefixWithUrl :: Int -> String -> [Block] -> [Block]
 prefixWithUrl _ _ [] = []
-prefixWithUrl n url blocks = Header n [Link [Str (fromMaybe url $ decString True url)] (url, "")] : blocks
+prefixWithUrl n url blocks = Header n nullAttr [Link [Str (fromMaybe url $ decString True url)] (url, "")] : blocks
 
 aggregators :: [(String, PluginM (Task -> Bool))]
 aggregators = [
@@ -284,7 +284,8 @@ aggregateTasks pageNameURL showTask = do
     Right markdown ->
       -- markdown found? collect all tasks into a single bullet list
       let
-        Pandoc _ content = readMarkdown (defaultParserState { stateSmart = True }) markdown
+        Pandoc _ content = readMarkdown def { readerSmart = True } markdown
         tasks = filter showTask (findToplevelTasks content)
       in
         if tasks == [] then [] else wrapWithDiv "tasks" [BulletList $ map (formatTask today) tasks]
+
